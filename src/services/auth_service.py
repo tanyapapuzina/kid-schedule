@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import random
 from passlib.context import CryptContext
+from src.models.parent_model import ParentModel
 from src.repositories.parent_repository import ParentRepository
 from src.models.pending_registration import PendingRegistration
 from src.api.auth_config import security
@@ -144,7 +145,8 @@ class AuthService:
         pin_expires_at = datetime.utcnow() + timedelta(minutes=3)
         return await self.repo.update_pending_parent(pending, pin_code, pin_expires_at)
     
-    async def login_parent(self, email: str, password: str) -> str:
+        
+    async def authenticate_parent(self, email: str, password: str) -> ParentModel:
         email = email.lower().strip()
 
         parent = await self.repo.get_by_email(email)
@@ -155,5 +157,9 @@ class AuthService:
         if not self.verify_password(password, parent.password_hash):
             raise ValueError("Неверный email или пароль.")
 
+        return parent
+    
+    async def login_parent(self, email: str, password: str) -> str:
+        parent = await self.authenticate_parent(email, password)
         token = security.create_access_token(uid=str(parent.id))
-        return token    
+        return token

@@ -24,6 +24,7 @@ from src.models.family_model import FamilyModel
 from src.models.family_member_model import FamilyMemberModel
 from src.models.family_join_code_model import FamilyJoinCodeModel
 from src.models.event_models import EventModel
+from src.models.mobile_refresh_token_model import MobileRefreshTokenModel
 
 
 load_dotenv() # читает файл .env и загружает переменные из него в окружение Python-процесса.

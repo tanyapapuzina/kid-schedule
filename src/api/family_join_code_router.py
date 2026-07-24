@@ -57,27 +57,27 @@ async def create_family_member_join_code(
     )
 
 
-@router.post(
-    "/login",
-    response_model=FamilyMemberLoginResponseSchema,
-    summary="Войти участником семьи по коду",
-) #Вход участника по коду
-async def login_family_member_by_code(
-    data: FamilyMemberCodeLoginSchema,
-    response: Response, #Нужен, чтобы поставить cookie
-    session: SessionDep,
-):
-    code_repo = FamilyJoinCodeRepository(session)
-    member_repo = FamilyMemberRepository(session)
-    service = FamilyJoinCodeService(code_repo, member_repo)
+# @router.post(
+#     "/login",
+#     response_model=FamilyMemberLoginResponseSchema,
+#     summary="Войти участником семьи по коду",
+# ) #Вход участника по коду
+# async def login_family_member_by_code(
+#     data: FamilyMemberCodeLoginSchema,
+#     response: Response, #Нужен, чтобы поставить cookie
+#     session: SessionDep,
+# ):
+#     code_repo = FamilyJoinCodeRepository(session)
+#     member_repo = FamilyMemberRepository(session)
+#     service = FamilyJoinCodeService(code_repo, member_repo)
 
-    try: #Сервис проверяет код и создает JWT
-        token, member = await service.login_by_code(data.code)
-        #Ставим JWT в HttpOnly-cookie
-        security.set_access_cookies(token=token, response=response)
-        return FamilyMemberLoginResponseSchema(message="Вход выполнен.")
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(error),
-        )
+#     try: #Сервис проверяет код и создает JWT
+#         token, member = await service.login_by_code(data.code)
+#         #Ставим JWT в HttpOnly-cookie
+#         security.set_access_cookies(token=token, response=response)
+#         return FamilyMemberLoginResponseSchema(message="Вход выполнен.")
+#     except ValueError as error:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail=str(error),
+#         )

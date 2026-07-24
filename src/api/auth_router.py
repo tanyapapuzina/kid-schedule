@@ -68,20 +68,20 @@ async def resend_pin(data: ResendPinSchema, session: SessionDep):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-@router.post(
-        "/login",
-        tags=["Авторизация"],
-        summary="Ввод логина и пароля"
-)
-async def login_parent(data: ParentLoginSchema, response: Response, session: SessionDep):
-    repo = ParentRepository(session)
-    service = AuthService(repo)
-    try:
-        token = await service.login_parent(data.email, data.password)
-        security.set_access_cookies(token=token, response=response)
-        return {"message": "Вход выполнен."}
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail=str(exc))
+# @router.post(
+#         "/login",
+#         tags=["Авторизация"],
+#         summary="Ввод логина и пароля"
+# )
+# async def login_parent(data: ParentLoginSchema, response: Response, session: SessionDep):
+#     repo = ParentRepository(session)
+#     service = AuthService(repo)
+#     try:
+#         token = await service.login_parent(data.email, data.password)
+#         security.set_access_cookies(token=token, response=response)
+#         return {"message": "Вход выполнен."}
+#     except ValueError as exc:
+#         raise HTTPException(status_code=401, detail=str(exc))
 
 #запрос на восстановление пароля   
 @router.post(
@@ -129,24 +129,24 @@ async def password_reset_resend(data: ResendPasswordPinSchema, session: SessionD
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     
-@router.post("/logout")
-async def logout_parent(response: Response):
-    security.unset_access_cookies(response)
-    return {"message": "Вы вышли из аккаунта."}
+# @router.post("/logout")
+# async def logout_parent(response: Response):
+#     security.unset_access_cookies(response)
+#     return {"message": "Вы вышли из аккаунта."}
 
 
-@router.get(
-    "/me",
-    response_model=ParentSchema,
-    tags=["Авторизация"],
-    summary="Получить профиль текущего родителя",
-) # 1. Browser отправляет my_access_token cookie.
-#2. CurrentParentDep вызывает get_current_parent.
-#3. AuthX проверяет JWT.
-#4. get_current_parent находит ParentModel.
-#5. Router возвращает ParentSchema.
-async def get_current_parent_profile(current_parent: CurrentParentDep, session: SessionDep):
-    return current_parent
+# @router.get(
+#     "/me",
+#     response_model=ParentSchema,
+#     tags=["Авторизация"],
+#     summary="Получить профиль текущего родителя",
+# ) # 1. Browser отправляет my_access_token cookie.
+# #2. CurrentParentDep вызывает get_current_parent.
+# #3. AuthX проверяет JWT.
+# #4. get_current_parent находит ParentModel.
+# #5. Router возвращает ParentSchema.
+# async def get_current_parent_profile(current_parent: CurrentParentDep, session: SessionDep):
+#     return current_parent
 
 
 @router.get(
