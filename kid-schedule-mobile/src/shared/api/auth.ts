@@ -1,5 +1,9 @@
 import { apiRequest } from '@/shared/api/client';
-import { clearAccessToken, setAccessToken } from '@/shared/storage/tokenStorage';
+import {
+  clearTokenPair,
+  getRefreshToken,
+  setTokenPair,
+} from '@/shared/storage/tokenStorage';
 import type {
   CurrentSession,
   MessageResponse,
@@ -45,7 +49,7 @@ export async function loginParent(payload: ParentLoginPayload): Promise<CurrentS
     body: JSON.stringify(payload),
   });
 
-  await setAccessToken(tokenResponse.access_token);
+  await setTokenPair(tokenResponse.access_token, tokenResponse.refresh_token);
   return getCurrentSession();
 }
 
@@ -56,7 +60,7 @@ export async function loginFamilyMemberByCode(payload: CodeLoginPayload): Promis
     body: JSON.stringify(payload),
   });
 
-  await setAccessToken(tokenResponse.access_token);
+  await setTokenPair(tokenResponse.access_token, tokenResponse.refresh_token);
   return getCurrentSession();
 }
 
@@ -121,5 +125,19 @@ export async function getCurrentSession(): Promise<CurrentSession> {
 }
 
 export async function logout(): Promise<void> {
-  await clearAccessToken();
+  const refreshToken = await getRefreshToken();
+
+  if (refreshToken) {
+    try {
+      await apiRequest<void>('/mobile/auth/logout', {
+        auth: false,
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch {
+      // Локальный выход все равно должен сработать, даже если backend недоступен.
+    }
+  }
+
+  await clearTokenPair();
 }

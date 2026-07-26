@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { getCurrentSession } from '@/shared/api/auth';
-import { clearAccessToken, getAccessToken } from '@/shared/storage/tokenStorage';
+import { clearTokenPair, getAccessToken } from '@/shared/storage/tokenStorage';
 import { colors } from '@/shared/theme/colors';
 import { spacing } from '@/shared/theme/spacing';
 import { typography } from '@/shared/theme/typography';
@@ -31,7 +31,7 @@ export default function IndexScreen() {
           setTargetRoute('/(tabs)/home');
         }
       } catch {
-        await clearAccessToken();
+        await clearTokenPair();
 
         if (isMounted) {
           setTargetRoute('/auth');

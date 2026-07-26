@@ -1,10 +1,18 @@
-import { getAccessToken } from '@/shared/storage/tokenStorage';
+import {
+  clearTokenPair,
+  getAccessToken,
+  getRefreshToken,
+  setTokenPair,
+} from '@/shared/storage/tokenStorage';
 
 export const API_BASE_URL = 'http://127.0.0.1:8000';
 
 type ApiRequestOptions = RequestInit & {
   auth?: boolean;
+  retryOnUnauthorized?: boolean;
 };
+
+let refreshTokenPromise: Promise<boolean> | null = null;
 
 // apiRequest это функция, которая выполняет HTTP-запрос к API с использованием Fetch API.
 // Она принимает путь к ресурсу и опции запроса, включая возможность указать,
@@ -14,10 +22,30 @@ export async function apiRequest<TResponse>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<TResponse> {
-  const { auth = true, headers, ...requestOptions } = options;
+  const { auth = true, retryOnUnauthorized = true, headers, ...requestOptions } = options;
+  const response = await sendRequest(path, requestOptions, headers, auth);
+
+  if (response.status === 401 && auth && retryOnUnauthorized) {
+    const didRefreshToken = await refreshAccessToken();
+
+    if (didRefreshToken) {
+      const retryResponse = await sendRequest(path, requestOptions, headers, auth);
+      return parseResponse<TResponse>(retryResponse);
+    }
+  }
+
+  return parseResponse<TResponse>(response);
+}
+
+async function sendRequest(
+  path: string,
+  requestOptions: RequestInit,
+  headers: RequestInit['headers'],
+  auth: boolean,
+): Promise<Response> {
   const token = auth ? await getAccessToken() : null;
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
@@ -25,7 +53,9 @@ export async function apiRequest<TResponse>(
       ...headers,
     },
   });
+}
 
+async function parseResponse<TResponse>(response: Response): Promise<TResponse> {
   if (!response.ok) {
     const message = await readErrorMessage(response);
     throw new Error(message || `API request failed with status ${response.status}`);
@@ -36,6 +66,55 @@ export async function apiRequest<TResponse>(
   }
 
   return (await response.json()) as TResponse;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (refreshTokenPromise) {
+    return refreshTokenPromise;
+  }
+
+  refreshTokenPromise = performRefreshAccessToken();
+
+  try {
+    return await refreshTokenPromise;
+  } finally {
+    refreshTokenPromise = null;
+  }
+}
+
+async function performRefreshAccessToken(): Promise<boolean> {
+  const refreshToken = await getRefreshToken();
+
+  if (!refreshToken) {
+    await clearTokenPair();
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/mobile/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!response.ok) {
+      await clearTokenPair();
+      return false;
+    }
+
+    const tokenPair = (await response.json()) as {
+      access_token: string;
+      refresh_token: string;
+    };
+
+    await setTokenPair(tokenPair.access_token, tokenPair.refresh_token);
+    return true;
+  } catch {
+    await clearTokenPair();
+    return false;
+  }
 }
 
 async function readErrorMessage(response: Response): Promise<string | null> {

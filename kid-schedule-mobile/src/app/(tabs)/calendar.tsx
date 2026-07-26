@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -286,52 +287,64 @@ export default function CalendarScreen() {
     [screenHeight, screenWidth],
   );
 
-  useEffect(() => {
-    let isCancelled = false;
+  useFocusEffect(
+    useCallback(() => {
+      let isCancelled = false;
 
-    async function loadFamilyData() {
-      setIsLoading(true);
-      setLoadError(null);
+      async function loadFamilyData() {
+        setIsLoading(true);
+        setLoadError(null);
 
-      try {
-        const families = await listFamilies();
-        const currentFamily = families[0];
+        try {
+          const families = await listFamilies();
+          const currentFamily = families[0];
 
-        if (!currentFamily) {
-          if (!isCancelled) {
-            setFamilyId(null);
-            setMembers([]);
-            setEvents([]);
-            setLoadError('Сначала создайте семью, чтобы вести расписание.');
+          if (!currentFamily) {
+            if (!isCancelled) {
+              setFamilyId(null);
+              setMembers([]);
+              setEvents([]);
+              setLoadError('Сначала создайте семью, чтобы вести расписание.');
+            }
+            return;
           }
-          return;
-        }
 
-        const familyMembers = await listFamilyMembers(currentFamily.id);
-        const firstChild = familyMembers.find((member) => member.role === 'child');
+          const familyMembers = await listFamilyMembers(currentFamily.id);
+          const firstChild = familyMembers.find((member) => member.role === 'child');
+          const childIds = familyMembers
+            .filter((member) => member.role === 'child')
+            .map((member) => member.id);
 
-        if (!isCancelled) {
-          setFamilyId(currentFamily.id);
-          setMembers(familyMembers);
-          setSelectedChildId((currentChildId) => currentChildId ?? firstChild?.id ?? null);
-        }
-      } catch (caughtError) {
-        if (!isCancelled) {
-          setLoadError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить семью.');
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
+          if (!isCancelled) {
+            setFamilyId(currentFamily.id);
+            setMembers(familyMembers);
+            setSelectedChildId((currentChildId) =>
+              currentChildId !== null && childIds.includes(currentChildId)
+                ? currentChildId
+                : firstChild?.id ?? null,
+            );
+            setVisibleChildIds((currentIds) =>
+              currentIds.filter((memberId) => childIds.includes(memberId)),
+            );
+          }
+        } catch (caughtError) {
+          if (!isCancelled) {
+            setLoadError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить семью.');
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false);
+          }
         }
       }
-    }
 
-    loadFamilyData();
+      loadFamilyData();
 
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+      return () => {
+        isCancelled = true;
+      };
+    }, []),
+  );
 
   useEffect(() => {
     let isCancelled = false;

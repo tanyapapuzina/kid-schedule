@@ -46,6 +46,7 @@ class FamilyMemberRepository:
         query = select(FamilyMemberModel).where(
             FamilyMemberModel.family_id == family_id,
             FamilyMemberModel.nickname == nickname,
+            FamilyMemberModel.is_active.is_(True),
         )
         result = await self.session.execute(query)
         return result.scalars().first()

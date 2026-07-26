@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getCurrentSession, logout } from '@/shared/api/auth';
@@ -41,9 +41,11 @@ export default function ProfileScreen() {
   const avatarTextColor = isParent ? colors.parentText : colors.plum;
   const familyName = family?.name ?? (session?.family_id ? 'Семья активна' : null);
 
-  useEffect(() => {
-    void loadProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, []),
+  );
 
   async function loadProfile() {
     setIsLoading(true);

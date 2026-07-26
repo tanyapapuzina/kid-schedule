@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -41,6 +41,8 @@ const WEEKDAY_LONG = ['воскресенье', 'понедельник', 'вт�
 const DAY_CAPACITY_MINUTES = 8 * 60;
 const DAY_CHART_HOURS = Array.from({ length: 17 }, (_, index) => index + 6);
 const MAX_BAR_HEIGHT = 104;
+const DAY_CHIP_WIDTH = 43;
+const DAY_CHIP_GAP = 8;
 
 const LOAD_COLORS = {
   empty: '#EEF2EC',
@@ -70,7 +72,10 @@ type LoadBucket = {
 export default function HomeScreen() {
   const router = useRouter();
   const today = useMemo(() => startOfDay(new Date()), []);
+  const weekStripRef = useRef<ScrollView | null>(null);
+  const [weekStripWidth, setWeekStripWidth] = useState(0);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(() => startOfMonth(today));
   const [session, setSession] = useState<CurrentSession | null>(null);
   const [familyId, setFamilyId] = useState<number | null>(null);
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -86,6 +91,8 @@ export default function HomeScreen() {
     const start = getWeekStart(selectedDate);
     return Array.from({ length: 7 }, (_, index) => addDays(start, index));
   }, [selectedDate]);
+
+  const dateStripDays = useMemo(() => buildMonthDays(selectedMonth), [selectedMonth]);
 
   const memberNames = useMemo(
     () => new Map(members.map((member) => [member.id, member.nickname])),
@@ -181,8 +188,8 @@ export default function HomeScreen() {
         }
 
         const familyMembers = await listFamilyMembers(currentFamily.id);
-        const periodStart = visibleDays[0];
-        const periodEnd = addDays(visibleDays[visibleDays.length - 1], 1);
+        const periodStart = selectedMonth;
+        const periodEnd = addMonths(selectedMonth, 1);
         const loadedEvents = await listEvents({
           start: periodStart.toISOString(),
           end: periodEnd.toISOString(),
@@ -203,19 +210,76 @@ export default function HomeScreen() {
         setIsRefreshing(false);
       }
     },
-    [visibleDays],
+    [selectedMonth],
   );
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   useEffect(() => {
     setSelectedLoadBucketKey(null);
   }, [loadChartMode, selectedChildId]);
 
+  useEffect(() => {
+    scrollWeekStripToDate(selectedDate, false);
+  }, [dateStripDays, selectedDate, weekStripWidth]);
+
+  function getCenteredWeekStripOffset(targetDate: Date): number | null {
+    if (!weekStripWidth) {
+      return null;
+    }
+
+    const targetDateKey = formatDateKey(targetDate);
+    const targetIndex = dateStripDays.findIndex((date) => formatDateKey(date) === targetDateKey);
+
+    if (targetIndex < 0) {
+      return null;
+    }
+
+    const chipStep = DAY_CHIP_WIDTH + DAY_CHIP_GAP;
+
+    return Math.max(0, targetIndex * chipStep - (weekStripWidth - DAY_CHIP_WIDTH) / 2);
+  }
+
+  function scrollWeekStripToDate(targetDate: Date, animated: boolean) {
+    const scrollOffset = getCenteredWeekStripOffset(targetDate);
+
+    if (scrollOffset === null) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      weekStripRef.current?.scrollTo({ animated, x: scrollOffset });
+    });
+  }
+
+  function handleTodayPress() {
+    setSelectedMonth(startOfMonth(today));
+    setSelectedDate(today);
+    scrollWeekStripToDate(today, true);
+  }
+
+  function handleMonthChange(direction: -1 | 1) {
+    const nextMonth = addMonths(selectedMonth, direction);
+
+    setSelectedMonth(nextMonth);
+    setSelectedDate(nextMonth);
+    setSelectedLoadBucketKey(null);
+
+    requestAnimationFrame(() => {
+      weekStripRef.current?.scrollTo({ animated: false, x: 0 });
+    });
+  }
+
   function openCalendar() {
     router.push('/calendar');
+  }
+
+  function openFamily() {
+    router.push('/family');
   }
 
   function toggleChildFilter(memberId: number) {
@@ -226,8 +290,13 @@ export default function HomeScreen() {
     setSelectedLoadBucketKey((currentKey) => (currentKey === bucket.key ? null : bucket.key));
 
     if (loadChartMode === 'week' && bucket.date) {
-      setSelectedDate(bucket.date);
+      selectDate(bucket.date);
     }
+  }
+
+  function selectDate(date: Date) {
+    setSelectedMonth(startOfMonth(date));
+    setSelectedDate(date);
   }
 
   return (
@@ -254,10 +323,14 @@ export default function HomeScreen() {
         </View>
 
         {loadError ? (
-          <View style={styles.noticeCard}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={openFamily}
+            style={({ pressed }) => [styles.noticeCard, pressed && styles.noticeCardPressed]}>
             <Text style={styles.noticeTitle}>Нужна настройка</Text>
             <Text style={styles.noticeText}>{loadError}</Text>
-          </View>
+            <Text style={styles.noticeAction}>Перейти в семью</Text>
+          </Pressable>
         ) : null}
 
         <View style={styles.planCard}>
@@ -285,14 +358,37 @@ export default function HomeScreen() {
 
         <View style={styles.weekStrip}>
           <View style={styles.weekHeader}>
-            <Text style={styles.weekTitle}>Неделя</Text>
-            <Pressable accessibilityRole="button" onPress={() => setSelectedDate(today)}>
+            <View style={styles.monthNav}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => handleMonthChange(-1)}
+                hitSlop={8}
+                style={styles.monthArrowButton}>
+                <Text style={styles.monthArrowText}>‹</Text>
+              </Pressable>
+              <Text style={styles.monthTitle}>{formatMonthYear(selectedMonth)}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => handleMonthChange(1)}
+                hitSlop={8}
+                style={styles.monthArrowButton}>
+                <Text style={styles.monthArrowText}>›</Text>
+              </Pressable>
+            </View>
+            <Pressable accessibilityRole="button" onPress={handleTodayPress}>
               <Text style={styles.todayLink}>Сегодня</Text>
             </Pressable>
           </View>
 
-          <View style={styles.weekRow}>
-            {visibleDays.map((date) => {
+          <ScrollView
+            ref={weekStripRef}
+            horizontal
+            bounces
+            decelerationRate="normal"
+            onLayout={(event) => setWeekStripWidth(event.nativeEvent.layout.width)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.weekRow}>
+            {dateStripDays.map((date) => {
               const isSelected = isSameDay(date, selectedDate);
               const isToday = isSameDay(date, today);
               const hasEvents = displayEvents.some((event) => eventOverlapsDay(event, date));
@@ -301,7 +397,7 @@ export default function HomeScreen() {
                 <Pressable
                   key={formatDateKey(date)}
                   accessibilityRole="button"
-                  onPress={() => setSelectedDate(date)}
+                  onPress={() => selectDate(date)}
                   style={[
                     styles.dayChip,
                     isSelected && styles.dayChipActive,
@@ -323,7 +419,7 @@ export default function HomeScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
 
         <View style={styles.sectionHeader}>
@@ -562,6 +658,10 @@ function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
 function endOfDay(date: Date): Date {
   const end = startOfDay(date);
   end.setDate(end.getDate() + 1);
@@ -572,6 +672,22 @@ function addDays(date: Date, days: number): Date {
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + days);
   return startOfDay(nextDate);
+}
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function buildMonthDays(month: Date): Date[] {
+  const monthStart = startOfMonth(month);
+  const nextMonthStart = addMonths(monthStart, 1);
+  const days: Date[] = [];
+
+  for (let currentDay = monthStart; currentDay < nextMonthStart; currentDay = addDays(currentDay, 1)) {
+    days.push(currentDay);
+  }
+
+  return days;
 }
 
 function getWeekStart(date: Date): Date {
@@ -773,6 +889,15 @@ function formatReadableDate(date: Date): string {
   return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }
 
+function formatMonthYear(date: Date): string {
+  const formattedDate = date.toLocaleDateString('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return formattedDate.slice(0, 1).toUpperCase() + formattedDate.slice(1);
+}
+
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru-RU', {
     hour: '2-digit',
@@ -847,6 +972,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     padding: spacing.md,
   },
+  noticeCardPressed: {
+    opacity: 0.78,
+  },
   noticeTitle: {
     color: colors.text,
     fontSize: typography.md,
@@ -857,6 +985,12 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     fontWeight: '700',
     lineHeight: 20,
+  },
+  noticeAction: {
+    color: colors.plum,
+    fontSize: typography.sm,
+    fontWeight: '900',
+    marginTop: 2,
   },
   planCard: {
     alignItems: 'center',
@@ -931,7 +1065,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  weekTitle: {
+  monthNav: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  monthArrowButton: {
+    alignItems: 'center',
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  monthArrowText: {
+    color: colors.muted,
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 30,
+  },
+  monthTitle: {
     color: colors.text,
     fontSize: typography.lg,
     fontWeight: '900',
@@ -942,8 +1093,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   weekRow: {
+    gap: DAY_CHIP_GAP,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    paddingRight: spacing.xs,
   },
   dayChip: {
     alignItems: 'center',

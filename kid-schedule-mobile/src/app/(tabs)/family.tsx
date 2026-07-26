@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ColorPicker, { BrightnessSlider, Panel3, Preview } from 'reanimated-color-picker';
 
@@ -43,7 +44,6 @@ const ROLE_META: Record<
   },
 };
 
-const DEFAULT_MEMBER_COLOR = '#DDA6FC';
 const PARENT_MEMBER_COLOR = '#536B8E';
 const PARENT_MEMBER_SOFT_COLOR = '#EAF0F8';
 
@@ -64,9 +64,9 @@ export default function FamilyScreen() {
   const [isMemberArchiving, setIsMemberArchiving] = useState(false);
   const [draftNickname, setDraftNickname] = useState('');
   const [draftRole, setDraftRole] = useState<FamilyMemberRole>('child');
-  const [draftColor, setDraftColor] = useState(DEFAULT_MEMBER_COLOR);
+  const [draftColor, setDraftColor] = useState(() => getRandomMemberColor());
   const [memberDraftNickname, setMemberDraftNickname] = useState('');
-  const [memberDraftColor, setMemberDraftColor] = useState(DEFAULT_MEMBER_COLOR);
+  const [memberDraftColor, setMemberDraftColor] = useState(() => getRandomMemberColor());
   const [draftFamilyName, setDraftFamilyName] = useState('');
   const [draftOwnerNickname, setDraftOwnerNickname] = useState('');
   const [joinCode, setJoinCode] = useState<FamilyJoinCode | null>(null);
@@ -92,53 +92,55 @@ export default function FamilyScreen() {
     [members],
   );
 
-  useEffect(() => {
-    let isCancelled = false;
+  useFocusEffect(
+    useCallback(() => {
+      let isCancelled = false;
 
-    async function loadFamily() {
-      setIsLoading(true);
-      setLoadError(null);
+      async function loadFamily() {
+        setIsLoading(true);
+        setLoadError(null);
 
-      try {
-        const currentSession = await getCurrentSession();
-        const families = await listFamilies();
-        const currentFamily = families[0];
+        try {
+          const currentSession = await getCurrentSession();
+          const families = await listFamilies();
+          const currentFamily = families[0];
 
-        if (!currentFamily) {
+          if (!currentFamily) {
+            if (!isCancelled) {
+              setSession(currentSession);
+              setFamily(null);
+              setMembers([]);
+              setLoadError('Семья пока не создана.');
+            }
+            return;
+          }
+
+          const freshFamily = await getFamily(currentFamily.id);
+          const familyMembers = await listFamilyMembers(currentFamily.id);
+
           if (!isCancelled) {
             setSession(currentSession);
-            setFamily(null);
-            setMembers([]);
-            setLoadError('Семья пока не создана.');
+            setFamily(freshFamily);
+            setMembers(familyMembers);
           }
-          return;
-        }
-
-        const freshFamily = await getFamily(currentFamily.id);
-        const familyMembers = await listFamilyMembers(currentFamily.id);
-
-        if (!isCancelled) {
-          setSession(currentSession);
-          setFamily(freshFamily);
-          setMembers(familyMembers);
-        }
-      } catch (caughtError) {
-        if (!isCancelled) {
-          setLoadError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить семью.');
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
+        } catch (caughtError) {
+          if (!isCancelled) {
+            setLoadError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить семью.');
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false);
+          }
         }
       }
-    }
 
-    loadFamily();
+      loadFamily();
 
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+      return () => {
+        isCancelled = true;
+      };
+    }, []),
+  );
 
   useEffect(
     () => () => {
@@ -175,7 +177,7 @@ export default function FamilyScreen() {
       setMembers((currentMembers) => [...currentMembers, createdMember]);
       setDraftNickname('');
       setDraftRole('child');
-      setDraftColor(DEFAULT_MEMBER_COLOR);
+      setDraftColor(getRandomMemberColor());
       setIsCreateOpen(false);
     } catch (caughtError) {
       setFormError(caughtError instanceof Error ? caughtError.message : 'Не удалось добавить участника.');
@@ -251,6 +253,14 @@ export default function FamilyScreen() {
     setMemberActionError(null);
     setIsMemberEditOpen(false);
     setIsMemberDeleteConfirmOpen(false);
+  }
+
+  function openCreateMemberModal() {
+    setDraftNickname('');
+    setDraftRole('child');
+    setDraftColor(getRandomMemberColor());
+    setFormError(null);
+    setIsCreateOpen(true);
   }
 
   function closeJoinCodeModal() {
@@ -357,10 +367,19 @@ export default function FamilyScreen() {
       </View>
 
       {loadError ? (
-        <EmptyState
-          title="Семья не загружена"
-          text={`${loadError} Если вы родитель, создайте семью в кабинете. Если вы участник, войдите по коду.`}
-        />
+        <Pressable
+          accessibilityRole={session?.actor_type === 'parent' ? 'button' : undefined}
+          disabled={session?.actor_type !== 'parent'}
+          onPress={() => setIsFamilyCreateOpen(true)}
+          style={({ pressed }) => [
+            session?.actor_type === 'parent' && styles.emptyFamilyAction,
+            pressed && styles.emptyFamilyActionPressed,
+          ]}>
+          <EmptyState
+            title="Семья не загружена"
+            text={`${loadError} Если вы родитель, создайте семью в кабинете. Если вы участник, войдите по коду.`}
+          />
+        </Pressable>
       ) : null}
 
       {!family && !isLoading && session?.actor_type === 'parent' ? (
@@ -419,7 +438,7 @@ export default function FamilyScreen() {
             {session?.actor_type === 'parent' ? (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => setIsCreateOpen(true)}
+                onPress={openCreateMemberModal}
                 style={({ pressed }) => [styles.addMemberTopButton, pressed && styles.addMemberTopButtonPressed]}>
                 <Text style={styles.addMemberTopButtonText}>+ Добавить</Text>
               </Pressable>
@@ -456,7 +475,7 @@ export default function FamilyScreen() {
                 onPress={() => {
                   setIsCreateOpen(false);
                   setFormError(null);
-                  setDraftColor(DEFAULT_MEMBER_COLOR);
+                  setDraftColor(getRandomMemberColor());
                 }}
                 style={styles.closeButton}>
                 <Text style={styles.closeText}>×</Text>
@@ -894,6 +913,58 @@ function formatCodeDate(date: Date): string {
     minute: '2-digit',
     month: 'long',
   });
+}
+
+function getRandomMemberColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  const saturation = 58 + Math.floor(Math.random() * 18);
+  const lightness = 74 + Math.floor(Math.random() * 9);
+
+  return hslToHex(hue, saturation, lightness);
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const normalizedSaturation = saturation / 100;
+  const normalizedLightness = lightness / 100;
+  const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+  const hueSegment = hue / 60;
+  const secondComponent = chroma * (1 - Math.abs((hueSegment % 2) - 1));
+  const lightnessMatch = normalizedLightness - chroma / 2;
+
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (hueSegment >= 0 && hueSegment < 1) {
+    red = chroma;
+    green = secondComponent;
+  } else if (hueSegment >= 1 && hueSegment < 2) {
+    red = secondComponent;
+    green = chroma;
+  } else if (hueSegment >= 2 && hueSegment < 3) {
+    green = chroma;
+    blue = secondComponent;
+  } else if (hueSegment >= 3 && hueSegment < 4) {
+    green = secondComponent;
+    blue = chroma;
+  } else if (hueSegment >= 4 && hueSegment < 5) {
+    red = secondComponent;
+    blue = chroma;
+  } else {
+    red = chroma;
+    blue = secondComponent;
+  }
+
+  return `#${toHexChannel(red + lightnessMatch)}${toHexChannel(green + lightnessMatch)}${toHexChannel(
+    blue + lightnessMatch,
+  )}`;
+}
+
+function toHexChannel(value: number): string {
+  return Math.round(value * 255)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase();
 }
 
 function getMemberVisualColor(member: FamilyMember): string {
@@ -1396,6 +1467,13 @@ const styles = StyleSheet.create({
   },
   disabledActionButton: {
     opacity: 0.58,
+  },
+  emptyFamilyAction: {
+    borderRadius: 26,
+  },
+  emptyFamilyActionPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.99 }],
   },
   form: {
     gap: spacing.md,

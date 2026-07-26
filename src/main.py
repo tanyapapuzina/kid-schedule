@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 import uvicorn
 from src.api import main_router
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from authx.exceptions import AuthXException
 from fastapi.middleware.cors import CORSMiddleware # CORS (Cross-Origin Resource Sharing) - это механизм безопасности, который позволяет ограничить 
 #доступ к ресурсам на веб-сервере из других доменов. В FastAPI, CORS middleware используется для настройки правил доступа к ресурсам API из других доменов.
 # Это особенно важно при разработке фронтенд-приложений, которые могут находиться на другом домене, чем API. CORS middleware позволяет указать, какие домены 
@@ -22,6 +25,13 @@ async def root():
 
 
 app.include_router(main_router) # Включаем основной роутер для API, который объединяет все маршруты в одном месте. Это позволяет организовать маршруты в отдельные модули и легко управлять ими.
+
+@app.exception_handler(AuthXException) # эта функция обрабатывает исключения, связанные с аутентификацией и авторизацией, возникающие в приложении. Когда возникает исключение AuthXException, FastAPI вызывает эту функцию, которая возвращает JSON-ответ с кодом состояния 401 (Unauthorized) и сообщением о том, что сессия истекла и необходимо обновить токен.
+async def authx_exception_handler(request: Request, exc: AuthXException):
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Сессия истекла. Обновите токен."},
+    )
 
 if __name__ == "__main__":
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True) #reload=True - это параметр, который указывает Uvicorn автоматически перезагружать сервер при изменении кода.

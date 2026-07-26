@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import UniqueConstraint, String
+from sqlalchemy import Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from src.database import Base
 
@@ -8,9 +8,14 @@ from src.database import Base
 class FamilyMemberModel(Base):
     __tablename__ = "family_members"
     __table_args__ = (
-        UniqueConstraint("family_id", "nickname", name="uq_family_member_family_nickname"),
-    ) #настройка ограничения уникальности на уровне таблицы базы данных
-     #уникальность члена семьи по семье и никнейму
+        Index(
+            "uq_active_family_member_family_nickname",
+            "family_id",
+            "nickname",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     family_id: Mapped[int] # в какой семье состоит участник

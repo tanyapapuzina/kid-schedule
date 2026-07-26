@@ -12,6 +12,7 @@ export type CurrentSession = {
 
 export type MobileTokenResponse = {
   access_token: string;
+  refresh_token: string;
   token_type: 'bearer';
 };
 
