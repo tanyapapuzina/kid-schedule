@@ -42,6 +42,13 @@ export default function AuthScreen() {
     }
   }
 
+  function openRegistrationPinStep() {
+    setMode('register');
+    setRegisterStep('pin');
+    setError(null);
+    setMessage(null);
+  }
+
   async function handleLogin() {
     setError(null);
     setMessage(null);
@@ -84,6 +91,17 @@ export default function AuthScreen() {
   async function handleConfirmRegistration() {
     setError(null);
     setMessage(null);
+
+    if (!email.trim()) {
+      setError('Введите email.');
+      return;
+    }
+
+    if (!pinCode.trim()) {
+      setError('Введите PIN-код.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -107,6 +125,12 @@ export default function AuthScreen() {
   async function handleResendRegistrationPin() {
     setError(null);
     setMessage(null);
+
+    if (!email.trim()) {
+      setError('Введите email.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -236,12 +260,33 @@ export default function AuthScreen() {
                 title={isLoading ? 'Отправляем...' : 'Запросить PIN'}
                 onPress={handleRegister}
               />
+
+              <View style={styles.pinHelpBlock}>
+                <Text style={styles.hintText}>Если код уже пришел на почту, его можно ввести сразу.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isLoading}
+                  onPress={openRegistrationPinStep}
+                  style={({ pressed }) => [styles.pinLinkButton, pressed && styles.pinLinkButtonPressed]}>
+                  <Text style={styles.pinLinkText}>Уже есть PIN?</Text>
+                </Pressable>
+              </View>
             </>
           ) : null}
 
           {mode === 'register' && registerStep === 'pin' ? (
             <>
-              <Text style={styles.hintText}>PIN отправлен на {email.trim()}</Text>
+              <Text style={styles.hintText}>
+                Введите email и PIN из письма. Если письмо не пришло, можно запросить код заново.
+              </Text>
+              <AppTextInput
+                autoCapitalize="none"
+                inputMode="email"
+                label="Email"
+                onChangeText={setEmail}
+                placeholder="Email"
+                value={email}
+              />
               <AppTextInput
                 autoCapitalize="characters"
                 inputMode="numeric"
@@ -268,7 +313,7 @@ export default function AuthScreen() {
               />
               <AppButton
                 disabled={isLoading}
-                title="Изменить email"
+                title="Назад к регистрации"
                 variant="secondary"
                 onPress={() => {
                   setRegisterStep('form');
@@ -418,6 +463,26 @@ const styles = StyleSheet.create({
     color: colors.brandDark,
     fontSize: typography.sm,
     fontWeight: '800',
+  },
+  pinHelpBlock: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: -spacing.xs,
+  },
+  pinLinkButton: {
+    borderColor: colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  pinLinkButtonPressed: {
+    backgroundColor: colors.sageSoft,
+  },
+  pinLinkText: {
+    color: colors.brandDark,
+    fontSize: typography.sm,
+    fontWeight: '900',
   },
   authTabs: {
     borderBottomColor: 'rgba(150, 167, 168, 0.22)',

@@ -1,17 +1,19 @@
 from datetime import datetime, timedelta
-import random
+import secrets
 from passlib.context import CryptContext
 from src.models.parent_model import ParentModel
 from src.repositories.parent_repository import ParentRepository
 from src.models.pending_registration import PendingRegistration
 from src.api.auth_config import security
 from src.models.password_request_model import PasswordResetRequest
+from src.services.email_service import EmailService
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class AuthService:
-    def __init__(self, repo: ParentRepository):
+    def __init__(self, repo: ParentRepository, email_service: EmailService | None = None,):
         self.repo = repo
+        self.email_service = email_service
     
     def hash_password(self, password: str) -> str:
         return pwd_context.hash(password)
@@ -20,7 +22,13 @@ class AuthService:
         return pwd_context.verify(plain_password, hashed_password)
     
     def generate_pin(self, length: int = 6) -> str:
-        return "".join(str(random.randint(0,9)) for _ in range(length))
+        return "".join(str(secrets.randbelow(10)) for _ in range(length))
+    
+    # helper для отправки регистрации. Если email_service не передан, метод ничего не делает.
+    async def send_registration_email(self, email: str, pin_code: str) -> None:
+        if self.email_service is None:
+            return
+        await self.email_service.send_registration_pin(email, pin_code)
     
     # удаляет устаревшие заявки
     async def cleanup_expired_pending_registrations(self):
@@ -55,9 +63,11 @@ class AuthService:
             pin_code=pin_code,
             pin_expires_at=pin_expires_at,
         )
-        return await self.repo.create_pending_registration(pending)
+        created_pending = await self.repo.create_pending_registration(pending)
+        await self.send_registration_email(email, pin_code)
+        return created_pending
     
-    #--------временный запрос на восстановление пароля---------
+    # временный запрос на восстановление пароля
     async def request_password_reset(self, email: str):
         email = email.lower().strip()
         await self.cleanup_expired_password_resets()        
@@ -77,7 +87,12 @@ class AuthService:
             pin_code=pin_code,
             pin_expires_at=pin_expires_at,
         )
-        return await self.repo.create_password_reset(password_reset)
+        created_requuest = await self.repo.create_password_reset(password_reset)
+
+        if self.email_service is not None:
+            await self.email_service.send_password_reset_pin(email, pin_code)
+
+        return created_requuest 
 
 
     # проверяет PIN и переносит данные в parents
@@ -100,6 +115,8 @@ class AuthService:
         await self.repo.delete_pending_registration(pending)
         return parent  
     
+
+
     #меняет только пароль существующей учётной записи
     async def confirm_password_reset(self, email:str, pin_code:str, new_password:str):
         email = email.lower().strip()
@@ -118,6 +135,7 @@ class AuthService:
         await self.repo.delete_password_reset(request)
         return parent
     
+
     #пин-код для воссановления пароля
     async def resend_password_reset_pin(self, email: str):
         email = email.lower().strip()
@@ -129,9 +147,15 @@ class AuthService:
 
         pin_code = self.generate_pin()
         pin_expires_at = datetime.utcnow() + timedelta(minutes=3)
-        return await self.repo.update_password_reset(existing_request, pin_code, pin_expires_at)
 
+        updated_request = await self.repo.update_password_reset(existing_request, pin_code, pin_expires_at)
+
+        if self.email_service is not None:
+            await self.email_service.send_password_reset_pin(email, pin_code)
+
+        return updated_request
     
+
     # обновляет expired PIN, но только если заявка ещё есть
     async def resend_pin(self, email: str):
         email = email.lower().strip()
@@ -143,9 +167,13 @@ class AuthService:
 
         pin_code = self.generate_pin()
         pin_expires_at = datetime.utcnow() + timedelta(minutes=3)
-        return await self.repo.update_pending_parent(pending, pin_code, pin_expires_at)
-    
+
+        updated_pending = await self.repo.update_pending_parent(pending, pin_code, pin_expires_at)
+        await self.send_registration_email(email, pin_code)
+        return updated_pending
         
+
+
     async def authenticate_parent(self, email: str, password: str) -> ParentModel:
         email = email.lower().strip()
 
@@ -159,6 +187,8 @@ class AuthService:
 
         return parent
     
+
+
     async def login_parent(self, email: str, password: str) -> str:
         parent = await self.authenticate_parent(email, password)
         token = security.create_access_token(uid=str(parent.id))

@@ -2,7 +2,7 @@ import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { confirmParentRegistration, registerParent } from '@/shared/api/auth';
+import { confirmParentRegistration, registerParent, resendRegistrationPin } from '@/shared/api/auth';
 import { AppButton } from '@/shared/components/AppButton';
 import { AppTextInput } from '@/shared/components/AppTextInput';
 import { Screen } from '@/shared/components/Screen';
@@ -46,6 +46,17 @@ export default function RegisterScreen() {
   async function handleConfirm() {
     setError(null);
     setMessage(null);
+
+    if (!email.trim()) {
+      setError('Введите email.');
+      return;
+    }
+
+    if (!pinCode.trim()) {
+      setError('Введите PIN-код.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -57,6 +68,27 @@ export default function RegisterScreen() {
       router.replace('/auth');
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Не удалось подтвердить PIN.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleResendRegistrationPin() {
+    setError(null);
+    setMessage(null);
+
+    if (!email.trim()) {
+      setError('Введите email.');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await resendRegistrationPin({ email: email.trim() });
+      setMessage(response.message);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Не удалось запросить новый PIN.');
     } finally {
       setIsLoading(false);
     }
@@ -115,10 +147,32 @@ export default function RegisterScreen() {
                 title={isLoading ? 'Отправляем...' : 'Запросить PIN'}
                 onPress={handleRegister}
               />
+              <View style={styles.pinHelpBlock}>
+                <Text style={styles.footerText}>Если код уже пришел на почту, его можно ввести сразу.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isLoading}
+                  onPress={() => {
+                    setStep('pin');
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  style={({ pressed }) => [styles.pinLinkButton, pressed && styles.pinLinkButtonPressed]}>
+                  <Text style={styles.pinLinkText}>Уже есть PIN?</Text>
+                </Pressable>
+              </View>
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={styles.emailText}>{email.trim()}</Text>
+              <Text style={styles.emailText}>Введите email и PIN из письма.</Text>
+              <AppTextInput
+                autoCapitalize="none"
+                inputMode="email"
+                label="Email"
+                onChangeText={setEmail}
+                placeholder="Email"
+                value={email}
+              />
               <AppTextInput
                 autoCapitalize="characters"
                 inputMode="numeric"
@@ -137,9 +191,19 @@ export default function RegisterScreen() {
               />
               <AppButton
                 disabled={isLoading}
-                title="Изменить email"
+                title="Отправить PIN еще раз"
                 variant="secondary"
-                onPress={() => setStep('form')}
+                onPress={handleResendRegistrationPin}
+              />
+              <AppButton
+                disabled={isLoading}
+                title="Назад к регистрации"
+                variant="secondary"
+                onPress={() => {
+                  setStep('form');
+                  setError(null);
+                  setMessage(null);
+                }}
               />
             </View>
           )}
@@ -231,6 +295,26 @@ const styles = StyleSheet.create({
   link: {
     color: colors.plum,
     fontSize: typography.md,
+    fontWeight: '900',
+  },
+  pinHelpBlock: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: -spacing.xs,
+  },
+  pinLinkButton: {
+    borderColor: colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  pinLinkButtonPressed: {
+    backgroundColor: colors.sageSoft,
+  },
+  pinLinkText: {
+    color: colors.plum,
+    fontSize: typography.sm,
     fontWeight: '900',
   },
   error: {

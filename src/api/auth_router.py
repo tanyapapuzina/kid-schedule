@@ -17,6 +17,9 @@ from src.schemas.password_request_schemas import (
     ResendPasswordPinSchema
 )
 
+from src.services.brevo_email_provider import BrevoEmailProvider
+from src.services.email_service import EmailService
+
 
 router = APIRouter(prefix="/auth")
 
@@ -33,12 +36,15 @@ async def root():
 )
 async def register_parent(data: RegisterRequestSchema, session: SessionDep):
     repo = ParentRepository(session)
-    service = AuthService(repo)
+    email_provider = BrevoEmailProvider() # Создаем объект, который умеет отправлять email через Brevo.
+    email_service = EmailService(email_provider) # Создаем внутренний сервис писем приложения.
+    service = AuthService(repo, email_service)
     try:
         await service.register_parent(data.email, data.password, data.name)
-        return {"message": "Если email не зарегистрирован, на него придет PIN-код."}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError:
+        pass
+
+    return {"message": "Если email можно использовать, на него придет PIN-код."}
 
 @router.post(
     "/confirm",
@@ -61,7 +67,9 @@ async def confirm_parent(data:ConfirmPinSchema, session: SessionDep):
 )
 async def resend_pin(data: ResendPinSchema, session: SessionDep):
     repo = ParentRepository(session)
-    service = AuthService(repo)
+    email_provider = BrevoEmailProvider()
+    email_service = EmailService(email_provider)
+    service = AuthService(repo, email_service)
     try:
         await service.resend_pin(data.email)
         return {"message": "PIN истёк. Новый PIN отправлен."}
@@ -91,13 +99,17 @@ async def resend_pin(data: ResendPinSchema, session: SessionDep):
 )
 async def password_reset_request(data:PasswordResetRequestSchema, session: SessionDep):
     repo = ParentRepository(session)
-    service = AuthService(repo)
+    email_provider = BrevoEmailProvider()
+    email_service = EmailService(email_provider)
+    service = AuthService(repo, email_service)
     try:
         await service.request_password_reset(data.email)
-        return {"message": "Если email зарегистрирован, на него придёт PIN-код."}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    
+    except ValueError:
+        pass
+
+    return {"message": "Если email можно использовать, на него придет PIN-код."}
+
+
 #подтверждение пин-кода и новый пароль
 @router.post(
     "/password-reset/confirm",
@@ -107,7 +119,9 @@ async def password_reset_request(data:PasswordResetRequestSchema, session: Sessi
 )
 async def password_reset_cofirm(data:PasswordResetConfirmSchema, session: SessionDep):
     repo = ParentRepository(session)
-    service = AuthService(repo)
+    email_provider = BrevoEmailProvider()
+    email_service = EmailService(email_provider)
+    service = AuthService(repo, email_service)
     try:
         parent = await service.confirm_password_reset(data.email, data.pin_code, data.new_password)
         return parent
@@ -122,7 +136,9 @@ async def password_reset_cofirm(data:PasswordResetConfirmSchema, session: Sessio
 )
 async def password_reset_resend(data: ResendPasswordPinSchema, session: SessionDep):
     repo = ParentRepository(session)
-    service = AuthService(repo)
+    email_provider = BrevoEmailProvider()
+    email_service = EmailService(email_provider)
+    service = AuthService(repo, email_service)
     try:
         await service.resend_password_reset_pin(data.email)
         return {"message": "Если email зарегистрирован, выдан новый PIN-код."}
