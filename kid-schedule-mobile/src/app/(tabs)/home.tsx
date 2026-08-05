@@ -942,7 +942,7 @@ const styles = StyleSheet.create({
   content: {
     gap: spacing.md,
     padding: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.md,
   },
   header: {
     alignItems: 'center',

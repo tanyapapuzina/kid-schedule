@@ -32,7 +32,7 @@ export default function CodeLoginScreen() {
   }
 
   return (
-    <Screen>
+    <Screen autoScrollOnKeyboard keyboardScrollOffset={140} scroll>
       <View style={styles.container}>
         <Pressable accessibilityRole="button" onPress={() => router.replace('/auth')}>
           <Text style={styles.backLink}>‹ Все способы входа</Text>

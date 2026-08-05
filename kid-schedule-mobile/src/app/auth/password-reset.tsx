@@ -72,7 +72,7 @@ export default function PasswordResetScreen() {
   }
 
   return (
-    <Screen>
+    <Screen autoScrollOnKeyboard keyboardScrollOffset={150} scroll>
       <View style={styles.container}>
         <Pressable accessibilityRole="button" onPress={() => router.replace('/auth')}>
           <Text style={styles.backLink}>‹ Войти</Text>

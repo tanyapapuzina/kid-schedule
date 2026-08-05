@@ -95,7 +95,7 @@ export default function RegisterScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen autoScrollOnKeyboard keyboardScrollOffset={170} scroll>
       <View style={styles.container}>
         <Pressable accessibilityRole="button" onPress={() => router.replace('/auth')}>
           <Text style={styles.backLink}>‹ Все способы входа</Text>

@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ColorPicker, { BrightnessSlider, Panel3, Preview } from 'reanimated-color-picker';
 
 import { getCurrentSession } from '@/shared/api/auth';
@@ -395,8 +395,8 @@ export default function FamilyScreen() {
 
       {isLoading ? (
         <View style={styles.noticeCard}>
-          <Text style={styles.noticeTitle}>Загружаем семью</Text>
-          <Text style={styles.noticeText}>Получаем участников и роли с backend.</Text>
+          <Text style={styles.noticeTitle}>Подготавливаем данные</Text>
+          <Text style={styles.noticeText}>Скоро все появится на экране.</Text>
         </View>
       ) : null}
 
@@ -463,8 +463,11 @@ export default function FamilyScreen() {
       ) : null}
 
       <Modal animationType="slide" transparent visible={isCreateOpen}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalEyebrow}>Новый участник</Text>
@@ -482,7 +485,11 @@ export default function FamilyScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.form}>
+            <ScrollView
+              contentContainerStyle={styles.modalFormContent}
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}>
               <AppTextInput
                 label="Имя или никнейм"
                 onChangeText={setDraftNickname}
@@ -543,14 +550,18 @@ export default function FamilyScreen() {
                 variant="accent"
                 onPress={handleCreateMember}
               />
+            </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal animationType="slide" transparent visible={isFamilyCreateOpen}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalEyebrow}>Семья</Text>
@@ -567,7 +578,11 @@ export default function FamilyScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.form}>
+            <ScrollView
+              contentContainerStyle={styles.modalFormContent}
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}>
               <AppTextInput
                 label="Название семьи"
                 onChangeText={setDraftFamilyName}
@@ -589,14 +604,18 @@ export default function FamilyScreen() {
                 variant="accent"
                 onPress={handleCreateFamily}
               />
+            </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal animationType="slide" transparent visible={selectedMember !== null}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
             {selectedMember ? (
               isMemberDeleteConfirmOpen ? (
                 <View style={styles.form}>
@@ -639,7 +658,11 @@ export default function FamilyScreen() {
                   </View>
                 </View>
               ) : isMemberEditOpen ? (
-                <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  contentContainerStyle={styles.modalFormContent}
+                  keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}>
                   <View style={styles.modalHeader}>
                     <View>
                       <Text style={styles.modalEyebrow}>Редактирование</Text>
@@ -760,8 +783,9 @@ export default function FamilyScreen() {
                 </View>
               )
             ) : null}
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal animationType="fade" transparent visible={joinCode !== null}>
@@ -1290,6 +1314,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  modalKeyboardView: {
+    flex: 1,
+  },
   modalOverlayCenter: {
     alignItems: 'center',
     backgroundColor: 'rgba(45, 42, 59, 0.42)',
@@ -1477,6 +1504,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.md,
+  },
+  modalFormContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xl,
   },
   choiceBlock: {
     gap: spacing.xs,

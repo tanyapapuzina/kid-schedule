@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { StyleSheet, Text, View } from 'react-native';
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
 
 function TabIcon({ focused, name }: { focused: boolean; name: SFSymbol }) {
@@ -10,7 +10,7 @@ function TabIcon({ focused, name }: { focused: boolean; name: SFSymbol }) {
       <SymbolView
         fallback={<Text style={[styles.iconFallback, focused && styles.iconFallbackActive]}>•</Text>}
         name={name}
-        size={20}
+        size={19}
         tintColor={focused ? colors.plum : colors.muted}
         weight={focused ? 'semibold' : 'regular'}
       />
@@ -19,6 +19,7 @@ function TabIcon({ focused, name }: { focused: boolean; name: SFSymbol }) {
 }
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -26,21 +27,25 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
-          backgroundColor: colors.surface,
+          backgroundColor: colors.background,
           borderTopColor: 'transparent',
           borderTopWidth: 0,
           elevation: 0,
-          height: 86,
-          paddingBottom: 24,
-          paddingTop: 10,
+          height: 64 + Math.min(insets.bottom, 8),
+          paddingBottom: 6 + Math.min(insets.bottom, 4),
+          paddingTop: 2,
           shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '900',
+          lineHeight: 13,
+          marginTop: 0,
         },
         tabBarItemStyle: {
-          paddingTop: 2,
+          justifyContent: 'center',
+          paddingBottom: 0,
+          paddingTop: 0,
         },
       }}>
       <Tabs.Screen
@@ -79,10 +84,10 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     backgroundColor: 'transparent',
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 32,
+    width: 30,
   },
   iconWrapActive: {
     backgroundColor: colors.lavenderSoft,

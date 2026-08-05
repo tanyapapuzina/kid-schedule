@@ -161,7 +161,7 @@ export default function AuthScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen autoScrollOnKeyboard keyboardScrollOffset={170} scroll>
       <View style={styles.container}>
         <View style={styles.heroCard}>
           <Text style={styles.logo}>Kid Schedule</Text>

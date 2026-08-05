@@ -1,6 +1,18 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from '@/shared/api/events';
@@ -97,13 +109,14 @@ const CALENDAR_FAB_EDGE_GAP = 18;
 const CALENDAR_FAB_BOTTOM = 24;
 const TIME_WHEEL_REPEAT_COUNT = 7;
 const TIME_WHEEL_CENTER_BLOCK = Math.floor(TIME_WHEEL_REPEAT_COUNT / 2);
-const TIME_WHEEL_ITEM_HEIGHT = 38;
+const TIME_WHEEL_ITEM_HEIGHT = 30;
+const TIME_RANGE_ERROR = 'Окончание должно быть позже начала';
 const REPEAT_OPTIONS: Array<{ value: RepeatMode; label: string; helper: string }> = [
-  { value: 'none', label: 'Не повторяется', helper: 'Одно событие' },
-  { value: 'daily', label: 'Каждый день', helper: 'Для регулярных событий' },
-  { value: 'weekly', label: 'Каждую неделю', helper: 'Можно выбрать дни: пн, ср...' },
-  { value: 'monthly', label: 'Каждый месяц', helper: 'В этот день месяца' },
-  { value: 'yearly', label: 'Каждый год', helper: 'Дни рождения и традиции' },
+  { value: 'none', label: 'Не повторяется', helper: 'одно событие' },
+  { value: 'daily', label: 'Каждый день', helper: 'ежедневно' },
+  { value: 'weekly', label: 'Каждую неделю', helper: 'по выбранным дням' },
+  { value: 'monthly', label: 'Каждый месяц', helper: 'в этот день' },
+  { value: 'yearly', label: 'Каждый год', helper: 'раз в год' },
 ];
 
 const LOAD_COLORS = {
@@ -226,10 +239,30 @@ export default function CalendarScreen() {
       ),
     );
   }, [filteredEvents, searchQuery]);
+  const draftHasInvalidTimeRange = useMemo(
+    () => isInvalidEventTimeRange(draftDate, draftStartTime, draftEndDate, draftEndTime, draftAllDay),
+    [draftAllDay, draftDate, draftEndDate, draftEndTime, draftStartTime],
+  );
+  const editHasInvalidTimeRange = useMemo(
+    () => isInvalidEventTimeRange(editDate, editStartTime, editEndDate, editEndTime, editAllDay),
+    [editAllDay, editDate, editEndDate, editEndTime, editStartTime],
+  );
 
   useEffect(() => {
     fabPositionRef.current = fabPosition;
   }, [fabPosition]);
+
+  useEffect(() => {
+    if (formError === TIME_RANGE_ERROR && !draftHasInvalidTimeRange) {
+      setFormError(null);
+    }
+  }, [draftHasInvalidTimeRange, formError]);
+
+  useEffect(() => {
+    if (eventActionError === TIME_RANGE_ERROR && !editHasInvalidTimeRange) {
+      setEventActionError(null);
+    }
+  }, [editHasInvalidTimeRange, eventActionError]);
 
   useEffect(() => {
     const maxBottom = Math.max(CALENDAR_FAB_BOTTOM, screenHeight - CALENDAR_FAB_SIZE - 170);
@@ -469,14 +502,14 @@ export default function CalendarScreen() {
 
   function openCreateEvent(date: Date, startTime = getDefaultDraftStartTime(new Date())) {
     const normalizedDate = startOfDay(date);
-    const endTime = ensureEndTimeAfterStart(startTime, startTime);
+    const defaultEnd = getDefaultEndDateTime(normalizedDate, startTime);
 
     setFormError(null);
     setPickerMode(null);
     setDraftDate(normalizedDate);
-    setDraftEndDate(normalizedDate);
+    setDraftEndDate(defaultEnd.date);
     setDraftStartTime(startTime);
-    setDraftEndTime(endTime);
+    setDraftEndTime(defaultEnd.time);
     setSelectedChildId((currentChildId) =>
       visibleChildIds.length === 1 ? visibleChildIds[0] : currentChildId,
     );
@@ -496,16 +529,18 @@ export default function CalendarScreen() {
       return;
     }
 
+    if (draftHasInvalidTimeRange) {
+      setPickerMode('endTime');
+      setFormError(TIME_RANGE_ERROR);
+      return;
+    }
+
     setIsSaving(true);
     setFormError(null);
 
     try {
       const startsAt = draftAllDay ? draftDate : dateWithTime(draftDate, draftStartTime.trim() || '09:00');
       let endsAt = draftAllDay ? addDays(draftEndDate, 1) : dateWithTime(draftEndDate, draftEndTime.trim() || '10:00');
-
-      if (endsAt <= startsAt) {
-        endsAt = draftAllDay ? addDays(startsAt, 1) : addMinutes(startsAt, 60);
-      }
 
       const recurrenceRule = buildRecurrenceRule(draftRepeat, draftRepeatDays);
       const payload = {
@@ -611,16 +646,18 @@ export default function CalendarScreen() {
       return;
     }
 
+    if (editHasInvalidTimeRange) {
+      setPickerMode('endTime');
+      setEventActionError(TIME_RANGE_ERROR);
+      return;
+    }
+
     setIsEventActionLoading(true);
     setEventActionError(null);
 
     try {
       const startsAt = editAllDay ? editDate : dateWithTime(editDate, editStartTime.trim() || '09:00');
       let endsAt = editAllDay ? addDays(editEndDate, 1) : dateWithTime(editEndDate, editEndTime.trim() || '10:00');
-
-      if (endsAt <= startsAt) {
-        endsAt = editAllDay ? addDays(startsAt, 1) : addMinutes(startsAt, 60);
-      }
 
       const updated = await updateEvent(selectedEvent.id, {
         title,
@@ -708,9 +745,6 @@ export default function CalendarScreen() {
           <Pressable accessibilityRole="button" onPress={handleTodayPress} style={styles.todayIconButton}>
             <Text style={styles.todayIconText}>{today.getDate()}</Text>
           </Pressable>
-          <View style={styles.accountCircle}>
-            <Text style={styles.accountText}>T</Text>
-          </View>
         </View>
 
         {isMonthPickerOpen ? (
@@ -756,7 +790,7 @@ export default function CalendarScreen() {
 
         {isLoading && !loadError ? (
           <View style={styles.loadingLine}>
-            <Text style={styles.loadingText}>Загружаем расписание...</Text>
+            <ActivityIndicator color={colors.sage} />
           </View>
         ) : null}
 
@@ -918,8 +952,11 @@ export default function CalendarScreen() {
       </Modal>
 
       <Modal animationType="slide" transparent visible={isSearchOpen}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.searchSheet}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.searchSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Поиск</Text>
               <Pressable accessibilityRole="button" onPress={() => setIsSearchOpen(false)} style={styles.closeButton}>
@@ -940,13 +977,17 @@ export default function CalendarScreen() {
               events={searchResults}
               onEventPress={handleOpenEvent}
             />
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal animationType="slide" transparent visible={isCreateOpen}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.eventEditor}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.eventEditor}>
             <View style={styles.editorHandle} />
             <View style={styles.editorTopBar}>
               <Pressable
@@ -963,15 +1004,18 @@ export default function CalendarScreen() {
                 accessibilityRole="button"
                 hitSlop={12}
                 onPress={handleCreateEvent}
-                disabled={isSaving}
+                disabled={isSaving || draftHasInvalidTimeRange}
                 style={styles.editorTopActionButton}>
-                <Text style={styles.editorAction}>{isSaving ? 'Сохраняем...' : 'Сохранить'}</Text>
+                <Text style={[styles.editorAction, draftHasInvalidTimeRange && styles.editorActionDisabled]}>
+                  {isSaving ? 'Сохраняем...' : 'Сохранить'}
+                </Text>
               </Pressable>
             </View>
 
             {formError ? <Text style={styles.editorTopError}>{formError}</Text> : null}
 
             <ScrollView
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               style={styles.editorScroll}
@@ -1050,8 +1094,19 @@ export default function CalendarScreen() {
                       selectedTime={draftStartTime}
                       title="Начало"
                       onSelect={(time) => {
+                        const currentEndIsInvalid = isInvalidEventTimeRange(
+                          draftDate,
+                          time,
+                          draftEndDate,
+                          draftEndTime,
+                          draftAllDay,
+                        );
+                        if (currentEndIsInvalid) {
+                          const defaultEnd = getDefaultEndDateTime(draftDate, time);
+                          setDraftEndDate(defaultEnd.date);
+                          setDraftEndTime(defaultEnd.time);
+                        }
                         setDraftStartTime(time);
-                        setDraftEndTime(ensureEndTimeAfterStart(time, draftEndTime));
                       }}
                     />
                   </InlinePicker>
@@ -1063,10 +1118,14 @@ export default function CalendarScreen() {
                       <Pressable accessibilityRole="button" onPress={() => togglePickerMode('endDate')} style={styles.valueButton}>
                         <Text style={styles.valueButtonText}>{formatLongDate(draftEndDate)}</Text>
                       </Pressable>
-                      <Pressable accessibilityRole="button" onPress={() => togglePickerMode('endTime')} style={styles.timeValueButton}>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => togglePickerMode('endTime')}
+                        style={[styles.timeValueButton, draftHasInvalidTimeRange && styles.valueButtonError]}>
                         <Text style={styles.valueButtonText}>{draftEndTime}</Text>
                       </Pressable>
                     </View>
+                    {draftHasInvalidTimeRange ? <Text style={styles.timeRangeError}>{TIME_RANGE_ERROR}</Text> : null}
                   </EditorRow>
                 ) : null}
 
@@ -1160,13 +1219,17 @@ export default function CalendarScreen() {
               </View>
 
             </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal animationType="slide" transparent visible={selectedEvent !== null}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.eventEditor}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalKeyboardView}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.eventEditor}>
             <View style={styles.editorHandle} />
             <View style={styles.editorTopBar}>
               <Pressable
@@ -1175,8 +1238,13 @@ export default function CalendarScreen() {
                 <Text style={styles.editorAction}>{isEditingEvent ? 'Отмена' : 'Закрыть'}</Text>
               </Pressable>
               {isEditingEvent ? (
-                <Pressable accessibilityRole="button" onPress={handleSaveEventEdit}>
-                  <Text style={styles.editorAction}>{isEventActionLoading ? 'Сохраняем...' : 'Сохранить'}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isEventActionLoading || editHasInvalidTimeRange}
+                  onPress={handleSaveEventEdit}>
+                  <Text style={[styles.editorAction, editHasInvalidTimeRange && styles.editorActionDisabled]}>
+                    {isEventActionLoading ? 'Сохраняем...' : 'Сохранить'}
+                  </Text>
                 </Pressable>
               ) : (
                 <View style={styles.detailTopActions}>
@@ -1191,7 +1259,11 @@ export default function CalendarScreen() {
             </View>
 
             {selectedEvent ? (
-              <ScrollView contentContainerStyle={styles.eventDetails} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                contentContainerStyle={styles.eventDetails}
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}>
                 {isEditingEvent ? (
                   <>
                     <AppTextInput
@@ -1281,8 +1353,19 @@ export default function CalendarScreen() {
                             selectedTime={editStartTime}
                             title="Начало"
                             onSelect={(time) => {
+                              const currentEndIsInvalid = isInvalidEventTimeRange(
+                                editDate,
+                                time,
+                                editEndDate,
+                                editEndTime,
+                                editAllDay,
+                              );
+                              if (currentEndIsInvalid) {
+                                const defaultEnd = getDefaultEndDateTime(editDate, time);
+                                setEditEndDate(defaultEnd.date);
+                                setEditEndTime(defaultEnd.time);
+                              }
                               setEditStartTime(time);
-                              setEditEndTime(ensureEndTimeAfterStart(time, editEndTime));
                             }}
                           />
                         </InlinePicker>
@@ -1294,10 +1377,14 @@ export default function CalendarScreen() {
                             <Pressable accessibilityRole="button" onPress={() => togglePickerMode('endDate')} style={styles.valueButton}>
                               <Text style={styles.valueButtonText}>{formatLongDate(editEndDate)}</Text>
                             </Pressable>
-                            <Pressable accessibilityRole="button" onPress={() => togglePickerMode('endTime')} style={styles.timeValueButton}>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => togglePickerMode('endTime')}
+                              style={[styles.timeValueButton, editHasInvalidTimeRange && styles.valueButtonError]}>
                               <Text style={styles.valueButtonText}>{editEndTime}</Text>
                             </Pressable>
                           </View>
+                          {editHasInvalidTimeRange ? <Text style={styles.timeRangeError}>{TIME_RANGE_ERROR}</Text> : null}
                         </EditorRow>
                       ) : null}
 
@@ -1405,8 +1492,9 @@ export default function CalendarScreen() {
                 {eventActionError ? <Text style={styles.errorText}>{eventActionError}</Text> : null}
               </ScrollView>
             ) : null}
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -2780,16 +2868,32 @@ function formatRepeatLabel(repeatMode: RepeatMode, repeatDays: string[]): string
   return 'Каждый год';
 }
 
-function ensureEndTimeAfterStart(startTime: string, currentEndTime: string): string {
-  const startMinutes = timeToMinutes(startTime);
-  const endMinutes = timeToMinutes(currentEndTime);
-
-  if (endMinutes > startMinutes) {
-    return currentEndTime;
+function isInvalidEventTimeRange(
+  startDate: Date,
+  startTime: string,
+  endDate: Date,
+  endTime: string,
+  allDay: boolean,
+): boolean {
+  if (allDay) {
+    return false;
   }
 
-  const nextMinutes = Math.min(startMinutes + 60, 23 * 60 + 45);
-  return minutesToTime(nextMinutes);
+  const startsAt = dateWithTime(startDate, startTime.trim() || '09:00');
+  const endsAt = dateWithTime(endDate, endTime.trim() || '10:00');
+
+  return endsAt <= startsAt;
+}
+
+function getDefaultEndDateTime(startDate: Date, startTime: string): { date: Date; time: string } {
+  const endsAt = dateWithTime(startDate, startTime.trim() || '09:00');
+
+  endsAt.setMinutes(endsAt.getMinutes() + 60);
+
+  return {
+    date: startOfDay(endsAt),
+    time: minutesToTime(endsAt.getHours() * 60 + endsAt.getMinutes()),
+  };
 }
 
 function getTimedEventLayout(event: DisplayCalendarEvent): { top: number; height: number } {
@@ -2942,19 +3046,6 @@ const styles = StyleSheet.create({
   todayIconText: {
     color: colors.text,
     fontSize: typography.sm,
-    fontWeight: '900',
-  },
-  accountCircle: {
-    alignItems: 'center',
-    backgroundColor: colors.sageSoft,
-    borderRadius: 999,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  accountText: {
-    color: colors.plum,
-    fontSize: typography.md,
     fontWeight: '900',
   },
   monthPickerPanel: {
@@ -3111,12 +3202,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   loadingLine: {
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
-  },
-  loadingText: {
-    color: colors.muted,
-    fontSize: typography.sm,
-    fontWeight: '800',
+    paddingVertical: spacing.xs,
   },
   noticeCard: {
     backgroundColor: colors.surface,
@@ -3776,6 +3864,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  modalKeyboardView: {
+    flex: 1,
+  },
   searchSheet: {
     backgroundColor: colors.background,
     borderTopLeftRadius: 34,
@@ -3801,7 +3892,7 @@ const styles = StyleSheet.create({
   },
   editorScrollContent: {
     gap: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxl * 2,
   },
   editorHandle: {
     alignSelf: 'center',
@@ -3825,6 +3916,9 @@ const styles = StyleSheet.create({
     color: colors.sage,
     fontSize: typography.md,
     fontWeight: '900',
+  },
+  editorActionDisabled: {
+    opacity: 0.42,
   },
   editorDanger: {
     color: colors.danger,
@@ -3896,6 +3990,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
   },
+  valueButtonError: {
+    backgroundColor: 'rgba(216, 92, 92, 0.08)',
+    borderColor: colors.danger,
+  },
   valueButtonWide: {
     backgroundColor: colors.surface,
     borderColor: colors.line,
@@ -3922,14 +4020,21 @@ const styles = StyleSheet.create({
     fontSize: typography.md,
     fontWeight: '900',
   },
+  timeRangeError: {
+    color: colors.danger,
+    fontSize: typography.xs,
+    fontWeight: '800',
+    marginLeft: 1,
+    marginTop: spacing.xs,
+  },
   inlinePicker: {
     backgroundColor: colors.mintSoft,
     borderColor: colors.mint,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     marginLeft: 46,
     overflow: 'hidden',
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   editorRow: {
     alignItems: 'center',
@@ -4074,7 +4179,7 @@ const styles = StyleSheet.create({
   },
   eventDetails: {
     gap: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl * 2,
   },
   detailTopActions: {
     alignItems: 'center',
@@ -4170,15 +4275,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   pickerContent: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   datePickerContent: {
     gap: spacing.md,
     paddingVertical: spacing.xs,
   },
   timePickerContent: {
-    gap: spacing.sm,
-    paddingVertical: 2,
+    gap: spacing.xs,
   },
   timePickerHeaderRow: {
     alignItems: 'flex-start',
@@ -4216,13 +4320,13 @@ const styles = StyleSheet.create({
   },
   pickerTitle: {
     color: colors.text,
-    fontSize: typography.xl,
+    fontSize: typography.lg,
     fontWeight: '900',
     textTransform: 'capitalize',
   },
   pickerSubtitle: {
     color: colors.muted,
-    fontSize: typography.sm,
+    fontSize: typography.xs,
     fontWeight: '800',
   },
   compactMonthGrid: {
@@ -4265,36 +4369,36 @@ const styles = StyleSheet.create({
   timePickerCurrent: {
     color: colors.sage,
     flexShrink: 0,
-    fontSize: typography.md,
+    fontSize: typography.sm,
     fontWeight: '800',
-    lineHeight: 22,
-    marginTop: 3,
+    lineHeight: 18,
+    marginTop: 2,
     minWidth: 48,
     textAlign: 'right',
   },
   wheelShell: {
     alignItems: 'center',
     flexDirection: 'row',
-    height: 150,
+    height: 114,
     justifyContent: 'center',
     overflow: 'hidden',
     position: 'relative',
   },
   wheelSelectionBand: {
     backgroundColor: 'rgba(150, 167, 168, 0.16)',
-    borderRadius: 14,
-    height: 40,
+    borderRadius: 12,
+    height: 34,
     left: spacing.xl,
     position: 'absolute',
     right: spacing.xl,
-    top: 54,
+    top: 40,
   },
   wheelColumn: {
-    maxHeight: 150,
-    width: 74,
+    maxHeight: 114,
+    width: 64,
   },
   wheelColumnContent: {
-    paddingVertical: 56,
+    paddingVertical: 42,
   },
   wheelItem: {
     alignItems: 'center',
@@ -4303,20 +4407,20 @@ const styles = StyleSheet.create({
   },
   wheelItemText: {
     color: 'rgba(45, 42, 59, 0.32)',
-    fontSize: 19,
+    fontSize: typography.md,
     fontWeight: '700',
   },
   wheelItemTextActive: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: typography.lg,
     fontWeight: '800',
   },
   wheelDivider: {
     color: colors.muted,
-    fontSize: 22,
+    fontSize: typography.lg,
     fontWeight: '800',
     paddingBottom: 2,
-    width: 18,
+    width: 16,
     textAlign: 'center',
   },
   repeatOptionList: {
@@ -4326,11 +4430,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderColor: 'rgba(150, 167, 168, 0.20)',
-    borderRadius: 18,
+    borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: spacing.md,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   repeatOptionActive: {
     backgroundColor: colors.lavenderSoft,
@@ -4338,7 +4444,7 @@ const styles = StyleSheet.create({
   },
   repeatOptionTitle: {
     color: colors.text,
-    fontSize: typography.md,
+    fontSize: typography.sm,
     fontWeight: '900',
   },
   repeatOptionTitleActive: {
@@ -4348,11 +4454,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: typography.xs,
     fontWeight: '700',
-    marginTop: 2,
+    marginTop: 1,
   },
   repeatCheck: {
     color: colors.muted,
-    fontSize: typography.lg,
+    fontSize: typography.md,
     fontWeight: '900',
   },
   repeatCheckActive: {
@@ -4372,9 +4478,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(150, 167, 168, 0.20)',
     borderRadius: 999,
     borderWidth: 1,
-    height: 42,
+    height: 36,
     justifyContent: 'center',
-    width: 42,
+    width: 36,
   },
   weekdayChipActive: {
     backgroundColor: colors.lavenderSoft,
@@ -4382,7 +4488,7 @@ const styles = StyleSheet.create({
   },
   weekdayChipText: {
     color: colors.muted,
-    fontSize: typography.sm,
+    fontSize: typography.xs,
     fontWeight: '900',
   },
   weekdayChipTextActive: {
